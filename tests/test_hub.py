@@ -406,3 +406,61 @@ def test_without_simplejpeg_pillow_makes_the_jpegs(hub, scene, monkeypatch):
     from PIL import Image
 
     assert Image.open(BytesIO(frames[-1]["payload"])).size == (160, 120)
+
+
+def test_messages_are_handled_in_order_on_a_coarse_clock(hub, scene, monkeypatch):
+    """Windows' clock ticks every ~15 ms: timers made in the same tick have equal due times, and asyncio's heap does
+    not keep those in order. A page's messages (and a stream's frames) must not depend on that."""
+    import time
+
+    monkeypatch.setattr(
+        hub.loop, "time", lambda: int(time.monotonic() * 20) / 20, raising=False
+    )
+
+    async def go():
+        session, ws = await connect(hub)
+        page = Page(ws, hub)
+        vid = await page.open(scene)
+        for i in range(40):  # one burst, far inside a 50 ms tick
+            await page.send(t="pose", v=vid, pose=dict(azimuth=float(i), elevation=0.0))
+        await page.send(t="getpose", v=vid)
+        await page.pump(0.8)
+        await ws.close()
+        await session.close()
+        return page
+
+    page = run(go())
+    assert [m for m in page.json if m["t"] == "pose"][-1]["pose"]["azimuth"] == 39.0
+    seqs = [f["seq"] for f in page.frames]
+    assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs)  # frames in order too
+
+
+def test_a_message_that_fails_does_not_stall_the_connection(hub, scene, monkeypatch):
+    errors = []
+    hub.loop.set_exception_handler(lambda loop, context: errors.append(context))
+    from scene_streamer.hub import Session
+
+    real = Session.handle
+
+    def handle(self, msg):
+        if msg["t"] == "wheel":
+            raise ValueError("boom")
+        return real(self, msg)
+
+    monkeypatch.setattr(Session, "handle", handle)
+
+    async def go():
+        session, ws = await connect(hub)
+        page = Page(ws, hub)
+        vid = await page.open(scene)
+        await page.send(t="wheel", v=vid, dy=1)
+        await page.send(t="getpose", v=vid)  # still answered after the failure
+        await page.pump(0.6)
+        await ws.close()
+        await session.close()
+        return page
+
+    page = run(go())
+    hub.loop.set_exception_handler(None)
+    assert [m for m in page.json if m["t"] == "pose"]
+    assert any(isinstance(e.get("exception"), ValueError) for e in errors)

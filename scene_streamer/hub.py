@@ -353,7 +353,10 @@ class Session:
                 due = self.link_free + self.rtt / 2000
             else:
                 due = now + self.rtt / 2000
-            loop.call_later(max(0, due - now), self.conn.send_bytes, data)
+            if due - now > 0:  # only with an emulated link
+                loop.call_later(due - now, self.conn.send_bytes, data)
+            else:  # never through a timer: timers made in the same clock tick can fire in any order
+                self.conn.send_bytes(data)
             self.wake.set()
 
 
@@ -644,13 +647,31 @@ class Hub:
 
         dog = asyncio.ensure_future(watchdog())
         loop = asyncio.get_running_loop()
+        inbox = (
+            asyncio.Queue()
+        )  # messages in arrival order, each due after the emulated delay
+
+        async def deliver():
+            while True:
+                due, m = await inbox.get()
+                if due - loop.time() > 0:
+                    await asyncio.sleep(due - loop.time())
+                try:
+                    conn.route(m)
+                except Exception as error:  # noqa: BLE001 - one bad message must not stall the connection
+                    loop.call_exception_handler(
+                        dict(message="error handling a viewer message", exception=error)
+                    )
+
+        delivery = asyncio.ensure_future(deliver())
         async for msg in ws:
             if msg.type == WSMsgType.TEXT:
                 m = json.loads(msg.data)
                 conn.last_rx = time.monotonic()
                 sess = conn.sessions.get(m.get("v", 0))
-                loop.call_later(sess.rtt / 2000 if sess else 0, conn.route, m)
+                inbox.put_nowait((loop.time() + (sess.rtt / 2000 if sess else 0), m))
         dog.cancel()
+        delivery.cancel()
         await conn.close()
         self.clients.discard(conn)
         if not self.clients:  # nobody left: framebuffers are not needed either
