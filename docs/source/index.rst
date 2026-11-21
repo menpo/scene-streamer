@@ -68,3 +68,4 @@ server binds to 127.0.0.1 by default.
 
    architecture
    api
+   changelog
