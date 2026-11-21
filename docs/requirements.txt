@@ -1,0 +1,4 @@
+# Documentation build dependencies (Read the Docs and CI). scene-streamer itself is installed with its
+# dependencies (aiohttp, NumPy, Pillow) and the notebook extra, which autodoc imports.
+sphinx>=7
+sphinx_rtd_theme>=2

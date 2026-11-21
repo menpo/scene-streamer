@@ -17,6 +17,8 @@ It knows nothing about meshes or OpenGL. The package that owns the scene and the
 the protocols in [`scene_streamer/protocols.py`](scene_streamer/protocols.py).
 [menpo3d](https://github.com/menpo/menpo3d) is the first such package (`mesh.view()`).
 
+Documentation: https://scene-streamer.readthedocs.io
+
 ## Install
 
 ```

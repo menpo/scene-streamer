@@ -32,6 +32,7 @@ all = ["scene-streamer[notebook,h264,fast-jpeg]"]
 
 [project.urls]
 Homepage = "https://github.com/menpo/scene-streamer"
+Documentation = "https://scene-streamer.readthedocs.io/en/stable/"
 Source = "https://github.com/menpo/scene-streamer"
 Issues = "https://github.com/menpo/scene-streamer/issues"
 

@@ -54,3 +54,23 @@ jobs:
           uv pip install --python .venv . pytest anywidget
           rm -rf scene_streamer   # test the installed copy, not the source folder
           .venv/bin/python -m pytest -q -rs
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: astral-sh/setup-uv@v5
+      - name: Only one Read the Docs config (it prefers a legacy readthedocs.yml over .readthedocs.yaml)
+        run: |
+          if ls readthedocs.yml readthedocs.yaml .readthedocs.yml 2>/dev/null; then
+            echo "legacy Read the Docs config file(s) above must be removed"; exit 1
+          fi
+      - name: Validate the Read the Docs configuration against its schema
+        run: uvx check-jsonschema --builtin-schema vendor.readthedocs .readthedocs.yaml
+      - name: Install what Read the Docs installs
+        run: |
+          uv venv --python 3.13 .venv-docs
+          uv pip install --python .venv-docs -r docs/requirements.txt ".[notebook]"
+      - name: Build the docs (warnings are errors, as on Read the Docs)
+        run: .venv-docs/bin/python -m sphinx -W --keep-going -b html docs/source docs/_build

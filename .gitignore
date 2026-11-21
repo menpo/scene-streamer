@@ -7,3 +7,4 @@ dist/
 .pytest_cache/
 .ruff_cache/
 scene_streamer/_version.py
+docs/_build/
