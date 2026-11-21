@@ -1,0 +1,85 @@
+name: Release
+
+# Builds the sdist + wheel (scene-streamer is pure Python) on every PR, on manual runs and on version tags.
+# Publishing uses PyPI trusted publishing (OIDC, no tokens) and uploads PEP 740 attestations automatically.
+#   * push a tag `vX.Y.Z`                 -> PyPI (+ GitHub release; aN/bN/rcN/.devN are pre-releases)
+#   * manual run with `publish: testpypi` -> TestPyPI (version is the latest tag + .devN)
+on:
+  pull_request:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Where to publish the built files"
+        type: choice
+        options: [none, testpypi]
+        default: none
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # setuptools-scm needs tags
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - run: uvx twine check --strict dist/*
+      - name: Smoke test the wheel (with the static page files)
+        run: |
+          uv venv .venv-wheel
+          uv pip install --python .venv-wheel dist/*.whl
+          cd "$(mktemp -d)"
+          "$GITHUB_WORKSPACE/.venv-wheel/bin/python" - <<'PY'
+          import pathlib, scene_streamer
+          print(scene_streamer.__version__)
+          static = pathlib.Path(scene_streamer.__file__).parent / "static"
+          assert (static / "viewer.js").exists() and (static / "view.html").exists()
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+
+  publish-pypi:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write        # trusted publishing
+      contents: write        # GitHub release
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dist, path: dist }
+      - name: Tag must match the built version
+        run: |
+          test -f "dist/scene_streamer-${GITHUB_REF_NAME#v}.tar.gz" \
+            || { echo "tag ${GITHUB_REF_NAME} does not match built files:"; ls dist; exit 1; }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # PEP 440 pre-releases (a/b/rc/dev) must not become the "latest" GitHub release
+          flags=()
+          if [[ "$GITHUB_REF_NAME" =~ ([0-9](a|b|rc)[0-9]+|\.dev[0-9]+)$ ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "$GITHUB_REF_NAME" "${flags[@]}"
+
+  publish-testpypi:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish == 'testpypi'
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dist, path: dist }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/

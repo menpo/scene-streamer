@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=77", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scene-streamer"
+dynamic = ["version"]
+description = "Stream frames from an OpenGL scene renderer to a browser, a notebook widget or an app window"
+readme = "README.md"
+license = "BSD-3-Clause"
+license-files = ["LICENSE.txt"]
+authors = [{ name = "The Menpo Team", email = "hello@menpo.org" }]
+requires-python = ">=3.10"
+dependencies = ["aiohttp>=3.9", "numpy>=1.23", "pillow>=9"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: Jupyter",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+
+[project.optional-dependencies]
+# a Jupyter widget (anywidget) that embeds the stream
+notebook = ["anywidget>=0.9"]
+# H.264 video instead of JPEG frames: smaller and smoother while the camera moves. PyAV bundles ffmpeg (with x264)
+h264 = ["av>=12"]
+# faster JPEG encoding than Pillow
+fast-jpeg = ["simplejpeg>=1.7"]
+all = ["scene-streamer[notebook,h264,fast-jpeg]"]
+
+[project.urls]
+Homepage = "https://github.com/menpo/scene-streamer"
+Source = "https://github.com/menpo/scene-streamer"
+Issues = "https://github.com/menpo/scene-streamer/issues"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff", "anywidget>=0.9", "av>=12", "simplejpeg>=1.7"]
+
+[tool.setuptools.packages.find]
+include = ["scene_streamer*"]
+
+[tool.setuptools.package-data]
+scene_streamer = ["static/*"]
+
+[tool.setuptools_scm]
+version_file = "scene_streamer/_version.py"
+local_scheme = "no-local-version"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+extend-exclude = ["scene_streamer/_version.py"]
+
+[tool.ruff.lint]
+select = ["E9", "F"]

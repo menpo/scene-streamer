@@ -1,0 +1,56 @@
+name: CI
+on:
+  push: { branches: [master] }
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uvx ruff check .
+      - run: uvx ruff format --check .
+
+  test:
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.10", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # setuptools-scm needs tags
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --python ${{ matrix.python }} --group dev
+      - run: uv run pytest -q -rs
+
+  minimal:
+    # no extras at all: the hub, JPEG frames, and the clear errors for what is missing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: astral-sh/setup-uv@v5
+      - run: |
+          uv venv .venv-min
+          uv pip install --python .venv-min . pytest
+          .venv-min/bin/python -m pytest -q -rs
+
+  sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build --sdist
+      - name: Unpack the sdist (no git) and run its tests against it
+        run: |
+          mkdir unpacked && tar -xzf dist/*.tar.gz -C unpacked
+          cd unpacked/scene_streamer-*
+          uv venv .venv
+          uv pip install --python .venv . pytest anywidget
+          rm -rf scene_streamer   # test the installed copy, not the source folder
+          .venv/bin/python -m pytest -q -rs
